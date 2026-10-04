@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime
@@ -30,7 +30,7 @@ class Prediction(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     symptoms = db.Column(db.String(500))
     predicted_disease = db.Column(db.String(100))
-=======
+
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime
@@ -62,5 +62,5 @@ class Prediction(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     symptoms = db.Column(db.String(500))
     predicted_disease = db.Column(db.String(100))
->>>>>>> a7fe855 (first commit)
+
     date = db.Column(db.DateTime, default=datetime.utcnow)
