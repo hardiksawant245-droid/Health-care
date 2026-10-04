@@ -53,16 +53,10 @@ app = Flask(__name__)
 from sqlalchemy.engine import URL
 
 # MySQL password comes from .env
-mysql_password = os.environ.get('MYSQL_PASSWORD')
+db_url = os.environ.get('DATABASE_URL')
 
-db_url = URL.create(
-    drivername="mysql+mysqlconnector",
-    username="root",
-    password=mysql_password,
-    host="localhost",
-    port=3306,
-    database="healthcare_db"
-)
+if not db_url:
+    raise RuntimeError("DATABASE_URL is not set")
 
 app.config['SECRET_KEY'] = os.environ.get(
     'SECRET_KEY',
