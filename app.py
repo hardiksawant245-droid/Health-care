@@ -92,8 +92,8 @@ if db_url.startswith("mysql+mysqlconnector://"):
                 os.path.dirname(__file__),
                 "aiven-ca.pem"
             ),
-            "ssl_verify_cert": True,
-            "ssl_verify_identity": True
+            "ssl_verify_cert": False,
+            "ssl_verify_identity": False
         }
     }
 
