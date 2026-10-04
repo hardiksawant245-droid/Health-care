@@ -4,17 +4,20 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), nullable=False)  # patient, doctor, admin
+    role = db.Column(db.String(20), nullable=False)
+
 
 class Doctor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     specialization = db.Column(db.String(100))
+
 
 class Appointment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -23,6 +26,7 @@ class Appointment(db.Model):
     date = db.Column(db.String(20))
     time = db.Column(db.String(20))
     status = db.Column(db.String(20), default="Pending")
+
 
 class Prediction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
