@@ -1,9 +1,9 @@
 import os
 import pickle
+from collections import Counter
 
-from dotenv import load_dotenv
-from simple_model import BernoulliNB, SimpleLabelEncoder
 import numpy as np
+from dotenv import load_dotenv
 
 from flask import (
     Flask,
@@ -12,7 +12,7 @@ from flask import (
     redirect,
     url_for,
     flash,
-    jsonify
+    jsonify,
 )
 
 from flask_login import (
@@ -20,40 +20,50 @@ from flask_login import (
     login_user,
     logout_user,
     login_required,
-    current_user
+    current_user,
 )
 
 from werkzeug.security import (
     generate_password_hash,
-    check_password_hash
+    check_password_hash,
 )
-
-from collections import Counter
 
 from models import db, User, Prediction, Doctor, Appointment
 
 
-# Load environment variables
+# =========================================================
+# LOAD ENVIRONMENT
+# =========================================================
+
 load_dotenv()
 
 
-# Create Flask application
+# =========================================================
+# CREATE FLASK APP
+# =========================================================
+
 app = Flask(__name__)
 
+# FIX: Secret key for sessions, login and flash messages
+app.config["SECRET_KEY"] = os.getenv(
+    "SECRET_KEY",
+    "medicare-secret-key-2026",
+)
 
-# Local MySQL password comes from .env
+
 # =========================================================
 # DATABASE CONFIGURATION
 # =========================================================
 
-# Get MySQL database URL
-db_url = os.environ.get('DATABASE_URL')
+# For now, local SQLite database.
+# MySQL can be connected later using DATABASE_URL.
 
-if not db_url:
-    raise RuntimeError("DATABASE_URL is not set")
+db_url = os.getenv(
+    "DATABASE_URL",
+    "sqlite:///healthcare.db"
+)
 
-# Railway gives mysql://
-# SQLAlchemy must use mysql+mysqlconnector://
+# MySQL URL compatibility
 if db_url.startswith("mysql://"):
     db_url = db_url.replace(
         "mysql://",
@@ -61,19 +71,19 @@ if db_url.startswith("mysql://"):
         1
     )
 
-app.config['SECRET_KEY'] = os.environ.get(
-    'SECRET_KEY',
-    'dev-secret-change-this'
-)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = db_url
+app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
 
 
-# Create database tables
+# =========================================================
+# CREATE DATABASE TABLES
+# =========================================================
+
 with app.app_context():
     db.create_all()
+
 
 # =========================================================
 # LOGIN CONFIGURATION
@@ -81,75 +91,110 @@ with app.app_context():
 
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login'
+
+login_manager.login_view = "login"
 
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 
 # =========================================================
 # HOME
 # =========================================================
 
-@app.route('/')
+@app.route("/")
 def home():
-    return redirect(url_for('login'))
+    return redirect(url_for("login"))
 
 
 # =========================================================
 # REGISTER
 # =========================================================
 
-@app.route('/register', methods=['GET', 'POST'])
+@app.route("/register", methods=["GET", "POST"])
 def register():
 
-    if request.method == 'POST':
+    if request.method == "POST":
 
-        name = request.form['name']
-        email = request.form['email']
-        password = request.form['password']
-        role = request.form['role']
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        role = request.form.get("role", "patient").strip().lower()
 
+        # Validation
+        if not name or not email or not password:
+            flash("Please fill all fields.")
+            return redirect(url_for("register"))
+
+        # Only patient and doctor can register publicly
+        if role not in ["patient", "doctor"]:
+            role = "patient"
+
+        # Check existing email
         existing_user = User.query.filter_by(
             email=email
         ).first()
 
         if existing_user:
-            flash('Email already registered!')
-            return redirect(url_for('register'))
+            flash("Email already registered!")
+            return redirect(url_for("register"))
 
-        hashed_pw = generate_password_hash(password)
+        # Hash password
+        hashed_password = generate_password_hash(
+            password
+        )
 
+        # Create user
         new_user = User(
             name=name,
             email=email,
-            password=hashed_pw,
+            password=hashed_password,
             role=role
         )
 
         db.session.add(new_user)
         db.session.commit()
 
-        flash('Registration successful! Please login.')
+        # Create doctor profile
+        if role == "doctor":
 
-        return redirect(url_for('login'))
+            doctor = Doctor(
+                user_id=new_user.id,
+                specialization="General Physician"
+            )
 
-    return render_template('register.html')
+            db.session.add(doctor)
+            db.session.commit()
+
+        flash(
+            "Registration successful! Please login."
+        )
+
+        return redirect(url_for("login"))
+
+    return render_template("register.html")
 
 
 # =========================================================
 # LOGIN
 # =========================================================
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route("/login", methods=["GET", "POST"])
 def login():
 
-    if request.method == 'POST':
+    if request.method == "POST":
 
-        email = request.form['email']
-        password = request.form['password']
+        email = request.form.get(
+            "email",
+            ""
+        ).strip().lower()
+
+        password = request.form.get(
+            "password",
+            ""
+        )
 
         user = User.query.filter_by(
             email=email
@@ -162,50 +207,61 @@ def login():
 
             login_user(user)
 
-            if user.role == 'admin':
+            if user.role == "admin":
+
                 return redirect(
-                    url_for('admin_dashboard')
+                    url_for("admin_dashboard")
                 )
 
-            elif user.role == 'doctor':
+            elif user.role == "doctor":
+
                 return redirect(
-                    url_for('doctor_dashboard')
+                    url_for("doctor_dashboard")
                 )
 
             else:
+
                 return redirect(
-                    url_for('patient_dashboard')
+                    url_for("patient_dashboard")
                 )
 
-        else:
-            flash('Invalid email or password')
+        flash(
+            "Invalid email or password."
+        )
 
-    return render_template('login.html')
+    return render_template("login.html")
 
 
 # =========================================================
 # LOGOUT
 # =========================================================
 
-@app.route('/logout')
+@app.route("/logout")
 @login_required
 def logout():
 
     logout_user()
 
-    return redirect(url_for('login'))
+    return redirect(
+        url_for("login")
+    )
 
 
 # =========================================================
 # PATIENT DASHBOARD
 # =========================================================
 
-@app.route('/patient-dashboard')
+@app.route("/patient-dashboard")
 @login_required
 def patient_dashboard():
 
+    if current_user.role != "patient":
+        return redirect(
+            url_for("login")
+        )
+
     return render_template(
-        'dashboard.html',
+        "dashboard.html",
         user=current_user
     )
 
@@ -214,12 +270,17 @@ def patient_dashboard():
 # DOCTOR DASHBOARD
 # =========================================================
 
-@app.route('/doctor-dashboard')
+@app.route("/doctor-dashboard")
 @login_required
 def doctor_dashboard():
 
+    if current_user.role != "doctor":
+        return redirect(
+            url_for("login")
+        )
+
     return render_template(
-        'admin_dashboard.html',
+        "admin_dashboard.html",
         user=current_user
     )
 
@@ -228,81 +289,173 @@ def doctor_dashboard():
 # ADMIN DASHBOARD
 # =========================================================
 
-@app.route('/admin-dashboard')
+@app.route("/admin-dashboard")
 @login_required
 def admin_dashboard():
 
+    if current_user.role != "admin":
+        return redirect(
+            url_for("login")
+        )
+
     return render_template(
-        'admin_dashboard.html',
+        "admin_dashboard.html",
         user=current_user
     )
 
 
 # =========================================================
-# LOAD MACHINE LEARNING MODEL
+# LOAD AI MODEL
 # =========================================================
 
-with open(
-    'ml_model/disease_model.pkl',
-    'rb'
-) as f:
+disease_model = None
+label_encoder = None
 
-    disease_model = pickle.load(f)
+model_path = os.path.join(
+    "ml_model",
+    "disease_model.pkl"
+)
+
+encoder_path = os.path.join(
+    "ml_model",
+    "label_encoder.pkl"
+)
 
 
-with open(
-    'ml_model/label_encoder.pkl',
-    'rb'
-) as f:
+if os.path.exists(model_path) and os.path.exists(
+    encoder_path
+):
 
-    label_encoder = pickle.load(f)
+    try:
+
+        with open(
+            model_path,
+            "rb"
+        ) as f:
+
+            disease_model = pickle.load(f)
+
+        with open(
+            encoder_path,
+            "rb"
+        ) as f:
+
+            label_encoder = pickle.load(f)
+
+        print(
+            "AI model loaded successfully."
+        )
+
+    except Exception as e:
+
+        print(
+            "AI model loading error:",
+            e
+        )
+
+else:
+
+    print(
+        "AI model files not found."
+    )
+
+    print(
+        "Run: python train_simple.py"
+    )
 
 
 # =========================================================
 # AI DISEASE PREDICTION
 # =========================================================
 
-@app.route('/predict', methods=['GET', 'POST'])
+@app.route(
+    "/predict",
+    methods=["GET", "POST"]
+)
 @login_required
 def predict():
 
+    if current_user.role != "patient":
+
+        return redirect(
+            url_for("login")
+        )
+
     result = None
 
-    if request.method == 'POST':
+    if request.method == "POST":
 
+        # Check model
+        if disease_model is None or label_encoder is None:
+
+            flash(
+                "AI model is not ready. "
+                "Run: python train_simple.py"
+            )
+
+            return render_template(
+                "predict.html",
+                result=None
+            )
+
+        # Get symptoms
         fever = int(
-            request.form.get('fever', 0)
+            request.form.get(
+                "fever",
+                0
+            )
         )
 
         cough = int(
-            request.form.get('cough', 0)
+            request.form.get(
+                "cough",
+                0
+            )
         )
 
         headache = int(
-            request.form.get('headache', 0)
+            request.form.get(
+                "headache",
+                0
+            )
         )
 
         fatigue = int(
-            request.form.get('fatigue', 0)
+            request.form.get(
+                "fatigue",
+                0
+            )
         )
 
         body_pain = int(
-            request.form.get('body_pain', 0)
+            request.form.get(
+                "body_pain",
+                0
+            )
         )
 
         sore_throat = int(
-            request.form.get('sore_throat', 0)
+            request.form.get(
+                "sore_throat",
+                0
+            )
         )
 
         nausea = int(
-            request.form.get('nausea', 0)
+            request.form.get(
+                "nausea",
+                0
+            )
         )
 
         rash = int(
-            request.form.get('rash', 0)
+            request.form.get(
+                "rash",
+                0
+            )
         )
 
-
+        # Create feature array
         features = np.array([[
             fever,
             cough,
@@ -314,17 +467,16 @@ def predict():
             rash
         ]])
 
-
+        # Prediction
         prediction = disease_model.predict(
             features
         )
-
 
         result = label_encoder.inverse_transform(
             prediction
         )[0]
 
-
+        # Store symptoms
         symptoms_str = (
             f"fever:{fever},"
             f"cough:{cough},"
@@ -336,20 +488,21 @@ def predict():
             f"rash:{rash}"
         )
 
-
+        # Save prediction
         new_prediction = Prediction(
             patient_id=current_user.id,
             symptoms=symptoms_str,
             predicted_disease=result
         )
 
+        db.session.add(
+            new_prediction
+        )
 
-        db.session.add(new_prediction)
         db.session.commit()
 
-
     return render_template(
-        'predict.html',
+        "predict.html",
         result=result
     )
 
@@ -359,51 +512,85 @@ def predict():
 # =========================================================
 
 @app.route(
-    '/book-appointment',
-    methods=['GET', 'POST']
+    "/book-appointment",
+    methods=["GET", "POST"]
 )
 @login_required
 def book_appointment():
 
-    doctors = User.query.filter_by(
-        role='doctor'
-    ).all()
-
-
-    if request.method == 'POST':
-
-        doctor_id = request.form['doctor_id']
-
-        date = request.form['date']
-
-        time = request.form['time']
-
-
-        new_appointment = Appointment(
-            patient_id=current_user.id,
-            doctor_id=doctor_id,
-            date=date,
-            time=time,
-            status='Pending'
-        )
-
-
-        db.session.add(new_appointment)
-        db.session.commit()
-
-
-        flash(
-            'Appointment booked successfully!'
-        )
-
+    if current_user.role != "patient":
 
         return redirect(
-            url_for('my_appointments')
+            url_for("login")
         )
 
+    doctors = User.query.filter_by(
+        role="doctor"
+    ).all()
+
+    if request.method == "POST":
+
+        doctor_id = request.form.get(
+            "doctor_id"
+        )
+
+        date = request.form.get(
+            "date"
+        )
+
+        time = request.form.get(
+            "time"
+        )
+
+        if not doctor_id or not date or not time:
+
+            flash(
+                "Please select doctor, date and time."
+            )
+
+            return redirect(
+                url_for("book_appointment")
+            )
+
+        doctor = User.query.filter_by(
+            id=doctor_id,
+            role="doctor"
+        ).first()
+
+        if not doctor:
+
+            flash(
+                "Doctor not found."
+            )
+
+            return redirect(
+                url_for("book_appointment")
+            )
+
+        appointment = Appointment(
+            patient_id=current_user.id,
+            doctor_id=doctor.id,
+            date=date,
+            time=time,
+            status="Pending"
+        )
+
+        db.session.add(
+            appointment
+        )
+
+        db.session.commit()
+
+        flash(
+            "Appointment booked successfully!"
+        )
+
+        return redirect(
+            url_for("my_appointments")
+        )
 
     return render_template(
-        'book_appointment.html',
+        "book_appointment.html",
         doctors=doctors
     )
 
@@ -412,91 +599,103 @@ def book_appointment():
 # MY APPOINTMENTS
 # =========================================================
 
-@app.route('/my-appointments')
+@app.route("/my-appointments")
 @login_required
 def my_appointments():
+
+    if current_user.role != "patient":
+
+        return redirect(
+            url_for("login")
+        )
 
     appointments = Appointment.query.filter_by(
         patient_id=current_user.id
     ).all()
 
-
     doctor_names = {}
 
+    for appointment in appointments:
 
-    for appt in appointments:
-
-        doc = User.query.get(
-            appt.doctor_id
+        doctor = db.session.get(
+            User,
+            appointment.doctor_id
         )
 
-        doctor_names[appt.doctor_id] = (
-            doc.name if doc else "Unknown"
+        doctor_names[
+            appointment.doctor_id
+        ] = (
+            doctor.name
+            if doctor
+            else "Unknown"
         )
-
 
     return render_template(
-        'my_appointments.html',
+        "my_appointments.html",
         appointments=appointments,
         doctor_names=doctor_names
     )
 
 
 # =========================================================
-# APPOINTMENT API
+# APPOINTMENTS API
 # =========================================================
 
-@app.route('/api/appointments')
+@app.route("/api/appointments")
 @login_required
 def api_appointments():
 
-    if current_user.role == 'doctor':
+    if current_user.role == "doctor":
 
         appointments = Appointment.query.filter_by(
             doctor_id=current_user.id
         ).all()
 
-    else:
+    elif current_user.role == "admin":
 
         appointments = Appointment.query.all()
 
+    else:
+
+        appointments = Appointment.query.filter_by(
+            patient_id=current_user.id
+        ).all()
 
     result = []
 
+    for appointment in appointments:
 
-    for a in appointments:
-
-        patient = User.query.get(
-            a.patient_id
+        patient = db.session.get(
+            User,
+            appointment.patient_id
         )
 
-        doctor = User.query.get(
-            a.doctor_id
+        doctor = db.session.get(
+            User,
+            appointment.doctor_id
         )
-
 
         result.append({
 
-            'id': a.id,
+            "id": appointment.id,
 
-            'patient_name':
+            "patient_name":
                 patient.name
                 if patient
-                else 'Unknown',
+                else "Unknown",
 
-            'doctor_name':
+            "doctor_name":
                 doctor.name
                 if doctor
-                else 'Unknown',
+                else "Unknown",
 
-            'date': a.date,
+            "date": appointment.date,
 
-            'time': a.time,
+            "time": appointment.time,
 
-            'status': a.status
+            "status": appointment.status
 
         })
-
 
     return jsonify(result)
 
@@ -506,7 +705,7 @@ def api_appointments():
 # =========================================================
 
 @app.route(
-    '/update-appointment/<int:appt_id>/<string:new_status>'
+    "/update-appointment/<int:appt_id>/<string:new_status>"
 )
 @login_required
 def update_appointment(
@@ -514,24 +713,62 @@ def update_appointment(
     new_status
 ):
 
-    appt = Appointment.query.get(
+    if current_user.role != "doctor":
+
+        return redirect(
+            url_for("login")
+        )
+
+    # Only allowed statuses
+    if new_status not in [
+        "Confirmed",
+        "Rejected"
+    ]:
+
+        flash(
+            "Invalid appointment status."
+        )
+
+        return redirect(
+            url_for("doctor_dashboard")
+        )
+
+    appointment = db.session.get(
+        Appointment,
         appt_id
     )
 
+    if not appointment:
 
-    if (
-        appt
-        and current_user.role == 'doctor'
-        and appt.doctor_id == current_user.id
-    ):
+        flash(
+            "Appointment not found."
+        )
 
-        appt.status = new_status
+        return redirect(
+            url_for("doctor_dashboard")
+        )
 
-        db.session.commit()
+    # Doctor can update only own appointment
+    if appointment.doctor_id != current_user.id:
 
+        flash(
+            "You are not allowed to update this appointment."
+        )
+
+        return redirect(
+            url_for("doctor_dashboard")
+        )
+
+    appointment.status = new_status
+
+    db.session.commit()
+
+    flash(
+        f"Appointment {new_status.lower()}."
+    )
 
     return redirect(
-        url_for('doctor_dashboard')
+        url_for("doctor_dashboard")
     )
 
 
@@ -539,49 +776,49 @@ def update_appointment(
 # ADMIN STATISTICS API
 # =========================================================
 
-@app.route('/api/stats')
+@app.route("/api/stats")
 @login_required
 def api_stats():
 
-    total_patients = User.query.filter_by(
-        role='patient'
-    ).count()
+    if current_user.role != "admin":
 
+        return jsonify({
+            "error": "Unauthorized"
+        }), 403
+
+    total_patients = User.query.filter_by(
+        role="patient"
+    ).count()
 
     total_doctors = User.query.filter_by(
-        role='doctor'
+        role="doctor"
     ).count()
-
 
     total_predictions = Prediction.query.count()
 
-
     all_predictions = Prediction.query.all()
 
-
     disease_list = [
-        p.predicted_disease
-        for p in all_predictions
+        prediction.predicted_disease
+        for prediction in all_predictions
     ]
-
 
     disease_counts = dict(
         Counter(disease_list)
     )
 
-
     return jsonify({
 
-        'total_patients':
+        "total_patients":
             total_patients,
 
-        'total_doctors':
+        "total_doctors":
             total_doctors,
 
-        'total_predictions':
+        "total_predictions":
             total_predictions,
 
-        'disease_counts':
+        "disease_counts":
             disease_counts
 
     })
@@ -591,7 +828,7 @@ def api_stats():
 # RUN APPLICATION
 # =========================================================
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     app.run(
         debug=True
