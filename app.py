@@ -57,6 +57,7 @@ app.config["SECRET_KEY"] = os.getenv(
 
 db_url = os.getenv("DATABASE_URL", "sqlite:///healthcare.db")
 
+# Convert MySQL URL to MySQL Connector URL
 if db_url.startswith("mysql://"):
     db_url = db_url.replace(
         "mysql://",
@@ -64,10 +65,26 @@ if db_url.startswith("mysql://"):
         1
     )
 
+# Remove Aiven's ssl-mode parameter from the URL
+if "?" in db_url:
+    base_url, query_string = db_url.split("?", 1)
+
+    query_parts = [
+        part
+        for part in query_string.split("&")
+        if not part.startswith("ssl-mode=")
+        and not part.startswith("ssl_disabled=")
+    ]
+
+    db_url = base_url
+
+    if query_parts:
+        db_url += "?" + "&".join(query_parts)
+
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Aiven MySQL SSL configuration
+# Aiven MySQL SSL
 if db_url.startswith("mysql+mysqlconnector://"):
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
         "connect_args": {
