@@ -41,22 +41,25 @@ load_dotenv()
 app = Flask(__name__)
 
 
-# =========================================================
-# DATABASE CONFIGURATION
-# =========================================================
-
 # Local MySQL password comes from .env
 # =========================================================
 # DATABASE CONFIGURATION
 # =========================================================
 
-from sqlalchemy.engine import URL
-
-# MySQL password comes from .env
+# Get MySQL database URL
 db_url = os.environ.get('DATABASE_URL')
 
 if not db_url:
     raise RuntimeError("DATABASE_URL is not set")
+
+# Railway gives mysql://
+# SQLAlchemy must use mysql+mysqlconnector://
+if db_url.startswith("mysql://"):
+    db_url = db_url.replace(
+        "mysql://",
+        "mysql+mysqlconnector://",
+        1
+    )
 
 app.config['SECRET_KEY'] = os.environ.get(
     'SECRET_KEY',
@@ -71,7 +74,6 @@ db.init_app(app)
 # Create database tables
 with app.app_context():
     db.create_all()
-
 
 # =========================================================
 # LOGIN CONFIGURATION
