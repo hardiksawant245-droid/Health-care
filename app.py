@@ -55,21 +55,24 @@ app.config["SECRET_KEY"] = os.getenv(
 # DATABASE CONFIGURATION
 # =========================================================
 
-# For now, local SQLite database.
-# MySQL can be connected later using DATABASE_URL.
+db_url = os.getenv("DATABASE_URL", "sqlite:///healthcare.db")
 
-db_url = os.getenv(
-    "DATABASE_URL",
-    "sqlite:///healthcare.db"
-)
-
-# MySQL URL compatibility
+# Convert normal MySQL URL to SQLAlchemy MySQL Connector URL
 if db_url.startswith("mysql://"):
     db_url = db_url.replace(
         "mysql://",
         "mysql+mysqlconnector://",
         1
     )
+
+# Aiven uses ssl-mode=REQUIRED in its connection URI.
+# mysql-connector-python expects ssl_disabled=false instead.
+if "mysql+mysqlconnector://" in db_url:
+    if "ssl-mode=REQUIRED" in db_url:
+        db_url = db_url.replace(
+            "ssl-mode=REQUIRED",
+            "ssl_disabled=false"
+        )
 
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
