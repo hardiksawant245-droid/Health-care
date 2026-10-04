@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Book Appointment</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container mt-5">
+    <div class="col-md-6 offset-md-3 card p-4">
+        <h3 class="text-center mb-3">Book Appointment</h3>
+
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="alert alert-success">{{ messages[0] }}</div>
+          {% endif %}
+        {% endwith %}
+
+        <form method="POST">
+            <label>Select Doctor</label>
+            <select name="doctor_id" class="form-control mb-2" required>
+                <option value="">-- Select Doctor --</option>
+                {% for doc in doctors %}
+                <option value="{{ doc.id }}">Dr. {{ doc.name }}</option>
+                {% endfor %}
+            </select>
+            {% if not doctors %}
+            <div class="text-danger small mb-2">No doctors available yet. Please ask a doctor to register first.</div>
+            {% endif %}
+
+            <label>Date</label>
+            <input type="date" name="date" class="form-control mb-2" required>
+
+            <label>Time</label>
+            <input type="time" name="time" class="form-control mb-3" required>
+
+            <button type="submit" class="btn btn-primary w-100" {% if not doctors %}disabled{% endif %}>Book Appointment</button>
+        </form>
+
+        <a href="{{ url_for('patient_dashboard') }}" class="btn btn-secondary w-100 mt-2">Back to Dashboard</a>
+    </div>
+</div>
+</body>
+</html>

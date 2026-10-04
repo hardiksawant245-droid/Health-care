@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My Appointments</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container mt-5">
+    <h3>My Appointments</h3>
+    <table class="table table-bordered bg-white mt-3">
+        <thead>
+            <tr><th>Doctor</th><th>Date</th><th>Time</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+            {% for appt in appointments %}
+            <tr>
+                <td>Dr. {{ doctor_names[appt.doctor_id] }}</td>
+                <td>{{ appt.date }}</td>
+                <td>{{ appt.time }}</td>
+                <td>{{ appt.status }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-center">No appointments yet</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <a href="{{ url_for('patient_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+</div>
+</body>
+</html>

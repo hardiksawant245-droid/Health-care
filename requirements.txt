@@ -1,0 +1,8 @@
+requirements · TXT
+flask
+flask-sqlalchemy
+flask-login
+mysql-connector-python
+numpy
+gunicorn
+ 

@@ -1,4 +1,10 @@
+<<<<<<< HEAD
 __pycache__/
 *.pyc
 ml_model/
+=======
+__pycache__/
+*.pyc
+ml_model/
+>>>>>>> a7fe855 (first commit)
 .env
